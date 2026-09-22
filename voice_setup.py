@@ -74,14 +74,13 @@ def call(path, params=None, method="GET", body=None, headers=None, raw=False):
         sys.exit(f"Could not reach {API}: {e.reason}")
 
 
-def cmd_voices(term="jarvis", count=8):
-    """Step 5: show real voices with their ids. No ids are ever invented here."""
+def search(term="jarvis", count=8):
     res = call("/model", {"title": term, "page_size": count, "sort_by": "score"})
-    items = res.get("items") or []
-    if not items:
-        print(f"Nothing matched {term!r}. Try: butler, narrator, british male, calm male.")
-        return
-    print(f"\n  {len(items)} of {res.get('total', len(items))} voices matching {term!r}\n")
+    return res.get("items") or [], res.get("total", 0)
+
+
+def show(items, total, term):
+    print(f"\n  {len(items)} of {total} voices matching {term!r}\n")
     for i, m in enumerate(items, 1):
         langs = ",".join(m.get("languages") or []) or "—"
         author = ((m.get("author") or {}).get("nickname")) or "—"
@@ -91,7 +90,36 @@ def cmd_voices(term="jarvis", count=8):
         if desc:
             print(f"     {desc}")
         print()
+
+
+def cmd_voices(term="jarvis", count=8):
+    """Step 5: show real voices with their ids. No ids are ever invented here."""
+    items, total = search(term, count)
+    if not items:
+        print(f"Nothing matched {term!r}. Try: butler, narrator, british male, calm male.")
+        return
+    show(items, total, term)
     print("  Pick one:  python3 voice_setup.py pick <id>\n")
+
+
+def cmd_choose(term="jarvis"):
+    """Search, list, pick by number. Loops until something is chosen."""
+    while True:
+        items, total = search(term)
+        if not items:
+            print(f"  Nothing matched {term!r}. Try: butler, narrator, british male, calm male.")
+        else:
+            show(items, total, term)
+        try:
+            ans = input("  Number to choose, or another search term (blank to skip): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not ans:
+            return
+        if ans.isdigit() and items and 1 <= int(ans) <= len(items):
+            return cmd_pick(items[int(ans) - 1]["_id"])
+        term = ans
 
 
 def cmd_pick(voice_id):
@@ -148,6 +176,8 @@ def main():
     cmd, rest = args[0], args[1:]
     if cmd == "voices":
         cmd_voices(" ".join(rest) or "jarvis")
+    elif cmd == "choose":
+        cmd_choose(" ".join(rest) or "jarvis")
     elif cmd == "pick":
         if not rest:
             sys.exit("usage: python3 voice_setup.py pick <voice-id>")

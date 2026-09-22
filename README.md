@@ -40,7 +40,20 @@ specific file.
 ## Run it
 
 ```bash
-cd jarvis-claude
+./setup.sh
+```
+
+One command, safe to re-run. It checks you have `python3` and the `claude` CLI,
+creates `.env`, takes your Fish Audio key without echoing it, lets you pick a
+voice from the real library by number, plays the result back so you can hear
+that it works, then starts the server on <http://localhost:8720>.
+
+Skip the key and it still runs — you just get the browser's robotic voice
+instead of a real one.
+
+Already set up, or want the pieces by hand:
+
+```bash
 python3 seed_vault.py     # writes a sample agency vault (skip if you have one)
 ./start.sh
 ```
