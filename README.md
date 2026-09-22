@@ -98,7 +98,19 @@ FISH_AUDIO_VOICE_ID=612b878b113047d9a770c069c8b4fdfe   # Jarvis (MCU)
 ```
 
 Find voice ids with `GET https://api.fish.audio/model?title=<search>`. Check
-remaining quota with `GET /wallet/self/package`.
+remaining quota with `GET /wallet/self/package`. `voice_setup.py` wraps both,
+and proves the result is real audio rather than a JSON error with a hopeful
+content type:
+
+```
+python3 voice_setup.py voices jarvis   # search the library, print ids
+python3 voice_setup.py pick <id>       # write it into .env
+python3 voice_setup.py say             # writes voice-check.mp3, checks the bytes
+python3 voice_setup.py wallet          # TTS balance vs ASR credit
+```
+
+It reads the key from `.env` and never prints it — only a masked fingerprint,
+so you can run it on a shared screen.
 
 The key stays server-side. The browser only ever receives mp3 bytes from
 `/api/speak`, so it never appears in devtools, page source, or a screen capture.
