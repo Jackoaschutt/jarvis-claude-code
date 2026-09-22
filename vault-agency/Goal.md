@@ -5,14 +5,14 @@ updated: 2026-09-22
 
 # Goal
 
-First paying client inside thirty days. One trade, one offer, one area.
+First paying dealer inside ninety days, working around a full-time job.
 
-The trap is building for three months and selling for none. Everything here
-is arranged to make selling happen first, because selling is the part that
-tells you what to build.
+Ninety, not thirty. The thirty-day version was written for a sole trader who
+answers his own phone. Dealerships have a dealer principal, a compliance
+question and a slower cycle. Pretending otherwise leads to quitting in week
+three when nothing has closed.
 
-Second goal, only after the first: three clients in the same trade, so the
-build is reused rather than rewritten. That is where this stops being a job
-and starts being a business.
+The real goal for the first month is narrower: know whether the compliance
+answer kills it. Everything else is downstream of that.
 
-[[Agency]] [[Week one]]
+[[Agency]] [[Week one]] [[Risk — Compliance]]

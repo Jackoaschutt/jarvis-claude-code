@@ -5,15 +5,15 @@ updated: 2026-09-22
 
 # Positioning
 
-The sentence people repeat when they describe you to someone else.
+The sentence.
 
-Bad: I do AI automation for small businesses.
-Good: I stop roofers losing jobs to missed calls.
+"I don't answer your phones. I chase the people you already stopped chasing."
 
-The good one names who and names a problem they already feel. It is narrower
-than the work you can actually do, and that is the point — narrow gets the
-meeting, and the meeting is where the rest comes out.
+It works because it is the opposite of what every other AI vendor walks in
+with. They all sell inbound — catching what comes in. This is outbound against
+data the dealership already owns and already paid for.
 
-Pick one trade and say only that until it stops working.
+Say it to a sales manager and he knows immediately what you mean, because he
+knows what his CRM looks like.
 
-[[ICP — High ticket home services]] [[Offer — Missed call rescue]]
+[[Offer — Lost lead recovery]] [[Competitors]]

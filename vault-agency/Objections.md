@@ -5,22 +5,21 @@ updated: 2026-09-22
 
 # Objections
 
-The four you will actually hear.
+"We already tried an AI phone thing." — Good, what happened? It probably
+answered calls and chased nobody. That gap is the offer.
 
-"I ring them back when I'm down." — You do, and the good ones are already
-booked. The text goes out in sixty seconds; you ring back whenever suits.
+"Those leads are dead." — Some are. They cost you nothing now either way, and
+the ones who bought elsewhere tell us that in one message.
 
-"My customers hate automated stuff." — They hate being ignored more. The
-text says it is automatic and that a human will follow up. Honest beats
-clever.
+"My guys already follow up." — For how long? Two calls, then a fresh lead comes
+in. No criticism, it is how commission works.
 
-"That's a lot per month." — What is one job worth? Wait for the number.
-Then say nothing.
+"I'd need to ask the dealer principal." — Expected. See
+[[ICP — Dealership sales departments]]. Offer to put it in writing for him
+rather than trying to close around it.
 
-"My nephew does my website." — Good, this is not a website. It runs whether
-or not anyone visits the site.
+"Can't hand over customer data." — Fair, and the answer is that it goes out
+under the dealership's name from the dealership's system. See
+[[Risk — Compliance]].
 
-The one you cannot argue with: "I don't miss calls." Sometimes true. Thank
-him, move on, do not try to prove him wrong. He is not the client.
-
-[[SOP — First call]] [[Pricing]]
+[[SOP — Sales manager conversation]]

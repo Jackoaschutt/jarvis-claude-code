@@ -5,14 +5,15 @@ updated: 2026-09-22
 
 # Agency
 
-The business. One operator, one offer, one industry: recovering jobs that
-high-ticket trades lose to missed calls.
+One operator, one offer, one industry: recovering dealership sales leads that
+were paid for, abandoned, and never contacted again.
 
-Not "AI automation for small businesses". That sentence gets no meetings
-because nobody hears themselves in it. See [[Positioning]].
+The edge is not the idea. It is that I sold cars on a dealership floor and know
+what actually happens to a lead after the second unanswered call. AI vendors
+selling into dealerships almost never have that.
 
-Current stage: no clients. The only thing that matters this week is
-[[SOP — After hours call test]], because it produces proof and a prospect
-list at the same time.
+Stage: no clients, idea survived a kill test with conditions. Before anything
+else, [[Risk — Compliance]] has to be answered, because it is the one that can
+end this.
 
-[[Positioning]] [[Offer — Missed call rescue]] [[Week one]] [[Goal]]
+[[Positioning]] [[Offer — Lost lead recovery]] [[Kill test]] [[Week one]]

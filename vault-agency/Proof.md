@@ -5,15 +5,15 @@ updated: 2026-09-22
 
 # Proof
 
-The demo that closes, and it takes nine seconds.
+Two questions. Do not pitch before asking them.
 
-Ring their business number while sitting in front of them. Nobody answers.
-Let the silence run a beat longer than is comfortable.
+"How many leads in your CRM are sitting marked lost?"
+"When did anyone last ring one?"
 
-Then: that just happened to eleven people this week, and none of them rang
-back.
+He knows the answer to the second one is never. Let him say it. The silence
+after is the pitch.
 
-No slides. No mention of models, agents or automation. The product is the
-text that arrives; the pitch is the call that does not get answered.
+If he does not know the first number, better again — ask him to pull it while
+you are sitting there.
 
-[[SOP — After hours call test]] [[SOP — First call]]
+[[SOP — Sales manager conversation]]

@@ -5,15 +5,15 @@ updated: 2026-09-22
 
 # Pricing
 
-Setup fee plus monthly. Never hourly — hourly invites a conversation about
-how long it took, which is the wrong conversation.
+Fixed fee plus a bonus. Never pure performance — see
+[[Risk — Performance pricing]].
 
-Opening numbers: seven hundred fifty to set up, four hundred a month.
+Opening position: a small fixed monthly that covers the work, plus a bonus per
+appointment that shows. Discount the fixed part to land the first one if you
+must. Do not drop it to zero.
 
-Anchor against one job, not against other software. "One recovered job pays
-for the year" is the whole argument, and for a roofer it is literally true.
+Anchor against gross on one car. If front-end gross on a used unit is a few
+thousand, one recovered sale covers months. That is the whole argument and the
+manager can do the arithmetic himself.
 
-Do not discount the monthly to win the first client. Discount the setup if
-you must — it is one-off, and it does not teach them that your price moves.
-
-[[ROI maths]] [[Offer — Missed call rescue]] [[Objections]]
+[[Risk — Performance pricing]] [[Offer — Lost lead recovery]]
