@@ -78,6 +78,13 @@ else
 import os, pathlib, re
 p = pathlib.Path(".env"); t = p.read_text()
 k = os.environ["KEY"].strip()
+# A terminal paste that repeats lands here as the key two or three times over,
+# which Fish rejects as a bad key rather than as a malformed one — so the error
+# sends you hunting for a new key instead of for a stray paste. Keep copy one.
+i = k.find("sk-", 3)
+if i > 0:
+    k = k[:i]
+    print(f"  \033[33m!\033[0m paste repeated — trimmed to the first key ({len(k)} chars)")
 if re.search(r"(?m)^FISH_AUDIO_API_KEY=", t):
     t = re.sub(r"(?m)^FISH_AUDIO_API_KEY=.*$", "FISH_AUDIO_API_KEY=" + k, t)
 else:
