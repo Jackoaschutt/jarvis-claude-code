@@ -34,8 +34,13 @@ if command -v claude >/dev/null 2>&1; then
   ok "claude $(claude --version 2>/dev/null | head -1)"
 else
   bad "claude CLI not found — JARVIS has no brain without it"
-  note "Install: npm install -g @anthropic-ai/claude-code   then run: claude"
-  note "It signs in with your Claude subscription. No API key, no per-token billing."
+  note "Install (macOS/Linux, no Node needed):"
+  note "    curl -fsSL https://claude.ai/install.sh | bash"
+  note "Homebrew:  brew install --cask claude-code"
+  note "With Node: npm install -g @anthropic-ai/claude-code"
+  note ""
+  note "Then run  claude  once and sign in. It uses your Claude subscription —"
+  note "no API key, no per-token billing. Then re-run ./setup.sh."
   fail=1
 fi
 
