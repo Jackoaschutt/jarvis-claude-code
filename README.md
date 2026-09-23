@@ -262,6 +262,22 @@ the sender id.
 Delivery tags are stripped before the text is spoken, so `[dry]` performs
 rather than being read out in the audio clip.
 
+## Always-on
+
+A laptop that sleeps is a JARVIS that sleeps. `deploy/install.sh` puts it on a
+small Linux box as two systemd services that start at boot and restart on
+crash, so the Telegram bot answers whether or not your machine is open.
+
+```bash
+./deploy/install.sh
+```
+
+`deploy/README.md` is the full walkthrough, from a bare VPS to a running bot.
+Two things in it are load-bearing: run as an ordinary user, because the CLI
+refuses `bypassPermissions` as root and would otherwise fail every turn; and
+stop the bridge on your laptop, because two bridges on one bot take turns
+stealing each other's messages.
+
 ## Security notes
 
 - Localhost bind, per-launch random API token, same-origin checks, bounded
