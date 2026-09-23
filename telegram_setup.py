@@ -15,6 +15,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -22,6 +23,32 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent
 ENV = ROOT / ".env"
 API = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+
+
+TOKEN_RE = r"^\d{5,}:[A-Za-z0-9_-]{30,}$"
+
+
+def mask(tok):
+    """Enough to check it against BotFather, not enough to be worth shoulder-surfing."""
+    return f"{tok[:6]}…{tok[-4:]}"
+
+
+def untangle(tok):
+    """Trim a paste that landed two or three times over."""
+    dupe = re.match(r"^(\d{5,}:[A-Za-z0-9_-]{30,})\1+$", tok)
+    return dupe.group(1) if dupe else tok
+
+
+def clipboard():
+    """Whatever is on the clipboard, or '' if we cannot see one."""
+    for cmd in (["pbpaste"], ["wl-paste"], ["xclip", "-o", "-selection", "clipboard"]):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                return out.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return ""
 
 
 def hidden(prompt):
@@ -66,16 +93,37 @@ def main():
     print("    Token comes from @BotFather (/newbot, or /revoke for a fresh one).")
     print("    Typing is hidden — nothing appears on screen and nothing is echoed back.\n")
 
-    token = hidden("  Paste the bot token: ")
-    print()
+    # Clipboard first. Pasting into a hidden prompt gives no feedback, so a
+    # paste that silently did not land looks exactly like a wrong token.
+    token = ""
+    clip = untangle(clipboard())
+    if re.match(TOKEN_RE, clip):
+        print(f"  Found a token on your clipboard: {mask(clip)}")
+        print("  Check that against BotFather's message.")
+        try:
+            if (input("  Use it? [Y/n]: ").strip().lower() or "y") in ("y", "yes"):
+                token = clip
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit("cancelled")
+        print()
+
+    if not token:
+        visible = "--show" in sys.argv
+        if visible:
+            print("  (--show: the token will be visible as you type)")
+        else:
+            print("  Nothing usable on the clipboard. Paste it below — the screen stays")
+            print("  blank while you do, which is normal. Re-run with --show to see it.")
+        token = (input if visible else hidden)("  Paste the bot token: ").strip()
+        print()
     if not token:
         sys.exit("  nothing entered — stopping.")
-    # A repeated paste is the single most common way this goes wrong.
-    dupe = re.match(r"^(\d{5,}:[A-Za-z0-9_-]{30,})\1+$", token)
-    if dupe:
-        token = dupe.group(1)
+    before = token
+    token = untangle(token)
+    if token != before:
         print(f"  ! paste repeated — trimmed to one token ({len(token)} chars)")
-    if not re.match(r"^\d{5,}:[A-Za-z0-9_-]{30,}$", token):
+    if not re.match(TOKEN_RE, token):
         sys.exit("  That does not look like a bot token. It should be a long number,\n"
                  "  then a colon, then a long mixed string. Copy the whole thing.")
 
