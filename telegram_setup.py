@@ -144,7 +144,16 @@ def main():
     # People paste the whole @userinfobot reply, which is several lines of
     # "Id: 6304037431 / First: ... / Last: ...". Take the numbers out of it
     # rather than making them retype what they already have.
-    found = list(dict.fromkeys(re.findall(r"\d{5,}", uid)))
+    # The clipboard usually still holds the token at this point, and a token is
+    # <bot_id>:<secret> — so digit-scraping it yields the BOT's id, which locks
+    # the owner out of their own bridge. Refuse it by shape and by value.
+    if ":" in uid and re.search(r"\d{5,}:[A-Za-z0-9_-]{20,}", uid):
+        sys.exit("  That is the bot token, not your user id.\n"
+                 "  Your id is a plain number with no colon — the Id: line from\n"
+                 "  @userinfobot. Type it rather than pasting; the clipboard still\n"
+                 "  has the token on it.")
+    found = [i for i in dict.fromkeys(re.findall(r"\d{5,}", uid))
+             if i != token.split(":", 1)[0]]
     if not found:
         sys.exit("  No id found in that. It is a number of at least five digits,\n"
                  "  like 812345678 — the Id: line from @userinfobot.")
