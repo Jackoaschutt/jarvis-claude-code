@@ -5,6 +5,7 @@ Steps 5 and 7 of the setup prompt, as one command each. Standard library only,
 same as the rest of the repo, and it reads .env exactly the way server.py does
 so there is one source of truth for the key.
 
+    python3 voice_setup.py key               # put the API key into .env
     python3 voice_setup.py voices jarvis     # search the library, print ids
     python3 voice_setup.py pick <voice-id>   # write it into .env
     python3 voice_setup.py say               # prove it actually speaks
@@ -17,6 +18,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -47,6 +49,16 @@ def key():
     if not k:
         sys.exit("No FISH_AUDIO_API_KEY in .env — add it, then run this again.")
     return k
+
+
+def hidden(prompt):
+    """Read without echoing."""
+    import getpass
+    try:
+        return getpass.getpass(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit("cancelled")
 
 
 def fingerprint(k):
@@ -90,6 +102,92 @@ def show(items, total, term):
         if desc:
             print(f"     {desc}")
         print()
+
+
+def _clipboard():
+    """Whatever is on the clipboard, or '' where there is no clipboard at all."""
+    for cmd in (["pbpaste"], ["wl-paste"], ["xclip", "-o", "-selection", "clipboard"]):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                return out.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return ""
+
+
+def _untangle(value):
+    """A paste that landed twice reads as a wrong key, not a doubled one."""
+    half = len(value) // 2
+    if len(value) % 2 == 0 and value[:half] == value[half:]:
+        return value[:half]
+    third = len(value) // 3
+    if len(value) % 3 == 0 and value[:third] * 3 == value:
+        return value[:third]
+    return value
+
+
+def _put(key, value):
+    text = ENV.read_text(encoding="utf-8") if ENV.exists() else ""
+    if re.search(rf"(?m)^{key}=", text):
+        text = re.sub(rf"(?m)^{key}=.*$", f"{key}={value}", text)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"{key}={value}\n"
+    ENV.write_text(text, encoding="utf-8")
+
+
+def cmd_key():
+    """Put the Fish Audio key into .env, checking it before saving."""
+    if not ENV.exists():
+        sys.exit("  No .env here. cd into the repo first.")
+    print("\n  Fish Audio key\n")
+    print("    On your other machine:  grep FISH_AUDIO_API_KEY .env")
+    print("    Copy the part after the = sign.\n")
+
+    value = _untangle(_clipboard())
+    if value.startswith("sk-") and len(value) > 20:
+        print(f"  Found a key on your clipboard: {fingerprint(value)}")
+        try:
+            if (input("  Use it? [Y/n]: ").strip().lower() or "y") not in ("y", "yes"):
+                value = ""
+        except (EOFError, KeyboardInterrupt):
+            print(); sys.exit("cancelled")
+        print()
+    else:
+        value = ""
+
+    if not value:
+        visible = "--show" in sys.argv
+        if not visible:
+            print("  Paste it below — the screen stays blank, which is normal.")
+            print("  Re-run with --show to watch it land.\n")
+        raw = (input if visible else hidden)("  Paste the key: ").strip()
+        print()
+        value = _untangle(raw)
+        if value != raw:
+            print(f"  ! paste repeated — trimmed to one key ({len(value)} chars)")
+
+    if not value:
+        sys.exit("  nothing entered — stopping.")
+    if not value.startswith("sk-"):
+        sys.exit("  That does not look like a Fish Audio key — they begin with sk-.")
+
+    os.environ["FISH_AUDIO_API_KEY"] = value     # so check() uses the new one
+    try:
+        pkg = call("/wallet/self/package")
+        print(f"  ✓ key works — TTS balance {pkg.get('balance')} of {pkg.get('total')}")
+    except SystemExit as e:
+        raise SystemExit(f"{e}\n  Key not saved.")
+
+    _put("FISH_AUDIO_API_KEY", value)
+    print(f"  ✓ saved to .env ({ENV})\n")
+    voice = os.environ.get("FISH_AUDIO_VOICE_ID", "").strip()
+    if voice:
+        print(f"  Voice already set to {voice[:8]}…  Test it:  python3 voice_setup.py say\n")
+    else:
+        print("  Now pick a voice:  python3 voice_setup.py voices jarvis\n")
 
 
 def cmd_voices(term="jarvis", count=8):
@@ -174,7 +272,9 @@ def main():
     load_env()
     args = sys.argv[1:] or ["say"]
     cmd, rest = args[0], args[1:]
-    if cmd == "voices":
+    if cmd == "key":
+        cmd_key()
+    elif cmd == "voices":
         cmd_voices(" ".join(rest) or "jarvis")
     elif cmd == "choose":
         cmd_choose(" ".join(rest) or "jarvis")
