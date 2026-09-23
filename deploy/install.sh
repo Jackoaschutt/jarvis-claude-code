@@ -122,12 +122,45 @@ else
   note "sudo loginctl enable-linger $USER_NAME"
 fi
 
+# Reaching this user with `su` gives no user systemd session, which is the
+# normal way in from a provider's web console. Rather than sending people off
+# to fix SSH, fall back to system units: they need no session, start at boot
+# regardless of who is logged in, and are the better fit for a server anyway.
 if ! systemctl --user daemon-reload 2>/dev/null; then
-  bad "no user systemd session on this box"
-  note "The unit files are written and correct, but nothing can start them."
-  note "Usually means you are in a container, or logged in without a session."
-  note "On a normal VPS, log out and back in over SSH, then re-run this."
-  echo; exit 1
+  note "no user systemd session (you probably got here with su) — using"
+  note "system services instead, which do not need one."
+  echo
+  note "sudo will ask for ${USER_NAME}'s password."
+  for unit in jarvis jarvis-bridge; do
+    sudo cp "$UNIT_DIR/$unit.service" "/etc/systemd/system/$unit.service" || {
+      bad "could not install system units — is $USER_NAME in the sudo group?"; exit 1; }
+    # A system unit runs as root unless told otherwise, and the CLI refuses
+    # bypassPermissions as root, so this line is what makes it work at all.
+    sudo sed -i "/^\[Service\]/a User=$USER_NAME\nGroup=$USER_NAME" "/etc/systemd/system/$unit.service"
+    sudo sed -i "s/^WantedBy=default.target/WantedBy=multi-user.target/" "/etc/systemd/system/$unit.service"
+  done
+  sudo systemctl daemon-reload
+  sudo systemctl enable jarvis.service jarvis-bridge.service >/dev/null 2>&1
+  sudo systemctl restart jarvis.service
+  sleep 3
+  sudo systemctl restart jarvis-bridge.service
+  sleep 2
+  echo
+  bold "Status"
+  for unit in jarvis jarvis-bridge; do
+    state="$(systemctl is-active "$unit" 2>/dev/null)"
+    if [ "$state" = "active" ]; then ok "$unit is running"; else
+      bad "$unit is $state"; note "why:  sudo journalctl -u $unit -n 30 --no-pager"; fi
+  done
+  echo
+  bold "From now on"
+  note "watch:    sudo journalctl -u jarvis-bridge -f"
+  note "restart:  sudo systemctl restart jarvis jarvis-bridge"
+  note "update:   git pull && sudo systemctl restart jarvis jarvis-bridge"
+  echo
+  note "Both start on boot. Message your bot to check it."
+  echo
+  exit 0
 fi
 systemctl --user enable jarvis.service jarvis-bridge.service >/dev/null 2>&1
 systemctl --user restart jarvis.service
