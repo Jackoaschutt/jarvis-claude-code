@@ -99,12 +99,21 @@ def ask(message):
                 ev = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if ev.get("t") == "delta":
+            kind = ev.get("t")
+            if kind == "delta":
                 out.append(ev.get("text", ""))
-            elif ev.get("t") == "note":
+            elif kind == "note":
                 out.append(ev.get("message", ""))
-            elif ev.get("t") == "error":
+            elif kind == "error":
                 error = ev.get("message", "something went wrong")
+            # Telegram only ever shows the finished answer. Print the working
+            # out here so this tab says what JARVIS actually did — which file it
+            # wrote, which command it ran — rather than going quiet for a minute.
+            elif kind == "tool" and ev.get("phase") == "use":
+                detail = " ".join(str(ev.get("input") or "").split())[:88]
+                print(f"     → {ev.get('name', 'tool')}  {detail}", flush=True)
+            elif kind == "tool" and ev.get("phase") == "result":
+                print(f"       {'ok' if ev.get('ok') else 'FAILED'}", flush=True)
     if error and not out:
         return f"[error] {error}"
     return "".join(out).strip() or "No answer came back."
@@ -148,11 +157,15 @@ def handle(msg):
         return
 
     tg("sendChatAction", {"chat_id": chat, "action": "typing"})
+    print(f"\n  ← {' '.join(text.split())[:100]}", flush=True)
+    started = time.monotonic()
     try:
         reply = ask(text)
     except Exception as e:                                    # noqa: BLE001
+        print(f"  ! {str(e)[:160]}", flush=True)
         tg("sendMessage", {"chat_id": chat, "text": f"JARVIS is not answering: {str(e)[:200]}"})
         return
+    print(f"  → {' '.join(reply.split())[:100]}  ({time.monotonic() - started:.0f}s)", flush=True)
     tg("sendMessage", {"chat_id": chat, "text": reply[:4000]})
     audio = speak(reply)
     if audio:
