@@ -244,8 +244,14 @@ TELEGRAM_VOICE=1                       # also send the spoken reply as audio
 ```
 
 ```bash
+python3 telegram_setup.py     # asks for both, verifies the token, writes .env
 python3 telegram_bridge.py
 ```
+
+`telegram_setup.py` takes the token without echoing it and without putting it
+through the shell, so it never lands in `~/.zsh_history`. It checks the token
+against Telegram before saving, so a revoked one is caught here rather than
+looking like a broken bridge, and it trims a token that got pasted twice.
 
 `TELEGRAM_ALLOWED_IDS` is required and the bridge exits without it. Bot
 usernames are discoverable and JARVIS runs `claude` with bypassPermissions in
