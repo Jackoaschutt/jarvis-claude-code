@@ -8,3 +8,4 @@ raw-*.log
 # plus .claude (what Claude Code reads) and drop the rest
 .hermes/
 .kiro/
+.bridge.pid

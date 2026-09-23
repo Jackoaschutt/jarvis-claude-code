@@ -22,10 +22,12 @@ it. JARVIS runs `claude` with bypassPermissions in your home directory, so an
 unrestricted bot is a shell that anyone who finds it can type into. Anything
 from an id not on that list is dropped and logged, never answered.
 """
+import atexit
 import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -49,6 +51,46 @@ SEND_VOICE = os.environ.get("TELEGRAM_VOICE", "1").strip().lower() not in {"0", 
 POLL = int(os.environ.get("TELEGRAM_POLL", "30"))
 
 ALLOWED = {i.strip() for i in os.environ.get("TELEGRAM_ALLOWED_IDS", "").split(",") if i.strip()}
+PIDFILE = ROOT / ".bridge.pid"
+
+
+def claim():
+    """Only one bridge per bot. Telegram allows a single getUpdates in flight,
+    so a second instance does not fail loudly — both sit there answering every
+    other message, which reads as the bot randomly ignoring you."""
+    other = _running_bridge()
+    if other:
+        sys.exit(f"  A bridge is already running (pid {other}).\n"
+                 f"  Use that one, or stop it first:  pkill -f telegram_bridge.py")
+    PIDFILE.write_text(str(os.getpid()))
+    atexit.register(release)
+
+
+def _running_bridge():
+    """The pid in the pidfile, but only if it is still a live bridge.
+
+    os.kill(pid, 0) is not enough: a killed process that its parent has not
+    reaped still answers, and a recycled pid belongs to something unrelated.
+    Either would wrongly block a legitimate start, so check the command too.
+    """
+    try:
+        pid = int(PIDFILE.read_text().strip())
+    except (OSError, ValueError):
+        return 0
+    try:
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return pid if "telegram_bridge" in out.stdout else 0
+
+
+def release():
+    try:
+        if int(PIDFILE.read_text().strip()) == os.getpid():
+            PIDFILE.unlink()
+    except (OSError, ValueError):
+        pass
 
 
 def tg(method, payload=None, files=None):
@@ -180,6 +222,7 @@ def main():
         sys.exit("No TELEGRAM_ALLOWED_IDS in .env. Refusing to start.\n"
                  "An open bot is a shell anyone can type into — JARVIS runs with\n"
                  "full tool access. Message @userinfobot for your numeric id.")
+    claim()
     try:
         token()
     except Exception as e:                                    # noqa: BLE001
@@ -204,7 +247,12 @@ def main():
             print("\n  bridge down.")
             return
         except Exception as e:                                # noqa: BLE001
-            print(f"  poll error: {str(e)[:160]}", flush=True)
+            note = ""
+            if "409" in str(e):
+                note = ("  (another getUpdates is in flight — usually a bridge you just\n"
+                        "   stopped, clearing within a minute. If it keeps repeating, a\n"
+                        "   second bridge is running: pkill -f telegram_bridge.py)")
+            print(f"  poll error: {str(e)[:160]}{note and chr(10) + note}", flush=True)
             time.sleep(5)
 
 
