@@ -230,6 +230,32 @@ handed to whoever loads the page. Do not do this on cafe or office Wi-Fi.
 Either way the Mac has to be awake with the server running. A sleeping laptop
 is a silent JARVIS; `caffeinate -s ./start.sh` keeps it up while plugged in.
 
+## Telegram
+
+`telegram_bridge.py` puts JARVIS in a Telegram chat. It long-polls Telegram
+rather than receiving webhooks, so there is no public URL, no port forwarding
+and no tunnel — the laptop dials out. It only needs `./start.sh` already
+running.
+
+```
+TELEGRAM_BOT_TOKEN=123456:AA...        # @BotFather
+TELEGRAM_ALLOWED_IDS=123456789         # @userinfobot, comma-separated
+TELEGRAM_VOICE=1                       # also send the spoken reply as audio
+```
+
+```bash
+python3 telegram_bridge.py
+```
+
+`TELEGRAM_ALLOWED_IDS` is required and the bridge exits without it. Bot
+usernames are discoverable and JARVIS runs `claude` with bypassPermissions in
+your home directory, so an unrestricted bot is a shell with a search box.
+Messages from any other id are dropped before they reach Claude and logged with
+the sender id.
+
+Delivery tags are stripped before the text is spoken, so `[dry]` performs
+rather than being read out in the audio clip.
+
 ## Security notes
 
 - Localhost bind, per-launch random API token, same-origin checks, bounded
