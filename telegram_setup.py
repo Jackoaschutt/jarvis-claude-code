@@ -141,8 +141,16 @@ def main():
     except (EOFError, KeyboardInterrupt):
         print()
         sys.exit("cancelled")
-    if not re.match(r"^\d{5,}(,\d{5,})*$", uid):
-        sys.exit("  That should be digits only, like 812345678.")
+    # People paste the whole @userinfobot reply, which is several lines of
+    # "Id: 6304037431 / First: ... / Last: ...". Take the numbers out of it
+    # rather than making them retype what they already have.
+    found = list(dict.fromkeys(re.findall(r"\d{5,}", uid)))
+    if not found:
+        sys.exit("  No id found in that. It is a number of at least five digits,\n"
+                 "  like 812345678 — the Id: line from @userinfobot.")
+    if uid.strip() != ",".join(found):
+        print(f"  ! picked the id out of that: {', '.join(found)}")
+    uid = ",".join(found)
 
     put("TELEGRAM_BOT_TOKEN", token)
     put("TELEGRAM_ALLOWED_IDS", uid)
