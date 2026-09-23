@@ -31,6 +31,7 @@ if _env.exists():
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 import commands    # noqa: E402
+import journal     # noqa: E402
 import memory      # noqa: E402
 import runtime     # noqa: E402
 import voice       # noqa: E402
@@ -237,12 +238,17 @@ class Handler(BaseHTTPRequestHandler):
         hit = memory.top_match(message)
         if hit:
             emit(dict(t="focus", id=hit))
+        actions, took = [], 0
         try:
             for ev in runtime.run(message, SESSION["id"], system):
                 if ev.get("t") == "complete" and runtime.valid_session(ev.get("session_id")):
                     SESSION["id"] = ev["session_id"]
                 if ev.get("t") == "error":
                     SESSION["id"] = None
+                if ev.get("t") == "tool" and ev.get("phase") == "use":
+                    actions.append({"name": ev.get("name", "tool"), "input": ev.get("input")})
+                if ev.get("t") == "complete":
+                    took = ev.get("ms") or 0
                 emit(ev)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -251,6 +257,13 @@ class Handler(BaseHTTPRequestHandler):
                 emit(dict(t="error", message=str(e)[:300]))
             except OSError:
                 pass
+        # A session remembers this conversation; the vault remembers the work.
+        # Written after the stream so a slow disk never stalls the reply.
+        try:
+            if journal.record(memory.build_graph()["vault"], message, actions, took):
+                memory.build_graph(force=True)
+        except Exception:  # noqa: BLE001
+            pass            # journalling must never take the turn down with it
 
 
 def main():

@@ -124,7 +124,13 @@ def _short(value, limit=90):
         else:
             value = json.dumps(value)
     text = " ".join(str(value).split())
-    return text[:limit] + ("…" if len(text) > limit else "")
+    if len(text) <= limit:
+        return text
+    # For a path the filename is the informative end, so trim the front.
+    # "…/very/deep/tree/lead_capture.py" beats "/Users/jack/some/very/deep/tr…".
+    if "/" in text and " " not in text:
+        return "…" + text[-(limit - 1):]
+    return text[:limit] + "…"
 
 
 def run_claude(message, session_id=None, system=None):
