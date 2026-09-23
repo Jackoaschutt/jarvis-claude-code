@@ -36,6 +36,27 @@ import runtime     # noqa: E402
 import voice       # noqa: E402
 
 PORT = int(os.environ.get("JARVIS_PORT", "8720"))
+
+# Loopback by default, and it should stay that way unless you mean it. JARVIS
+# runs `claude` with bypassPermissions in your home directory, so anything that
+# can reach this port can run commands on your machine. Bind wider only over a
+# private network you control (Tailscale), never a cafe or office LAN.
+BIND = os.environ.get("JARVIS_BIND", "127.0.0.1").strip() or "127.0.0.1"
+
+
+def _hosts():
+    """Host/Origin values the browser is allowed to use. Loopback always."""
+    out = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+    for h in os.environ.get("JARVIS_HOSTS", "").split(","):
+        h = h.strip()
+        if h:
+            out.add(h)
+            if ":" not in h:
+                out.add(f"{h}:{PORT}")   # bare name covers HTTPS on 443 too
+    return out
+
+
+HOSTS = _hosts()
 API_TOKEN = secrets.token_urlsafe(32)
 RUN_LOCK = threading.Lock()
 MAX_JSON = 1024 * 1024
@@ -74,10 +95,12 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(n) if n else b""
 
     def _host_ok(self):
-        return self.headers.get("Host", "") in {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+        return self.headers.get("Host", "") in HOSTS
 
     def _origin_ok(self):
-        return self.headers.get("Origin") in {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
+        origin = self.headers.get("Origin")
+        return bool(origin) and any(origin == f"{scheme}://{h}"
+                                    for h in HOSTS for scheme in ("http", "https"))
 
     def _token_ok(self):
         supplied = self.headers.get("X-Jarvis-Token", "")
@@ -247,7 +270,10 @@ def main():
   workdir      {runtime.WORKDIR}
   open         http://localhost:{PORT}
 """, flush=True)
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    if BIND != "127.0.0.1":
+        print(f"  !  bound to {BIND}, not loopback. Anything that can reach this\n"
+              f"     port can run commands as you. Private network only.\n", flush=True)
+    srv = ThreadingHTTPServer((BIND, PORT), Handler)
     if os.environ.get("JARVIS_OPEN", "1") != "0":
         webbrowser.open(f"http://localhost:{PORT}")
     try:

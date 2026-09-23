@@ -191,6 +191,45 @@ All optional, all in `.env` — see `.env.example`.
 | `JARVIS_WORKDIR` | `~` | what Claude can see |
 | `CLAUDE_CMD` | auto-detected | absolute path if `claude` isn't on PATH |
 
+## On your phone
+
+JARVIS binds to loopback, so a phone cannot reach it by default. The safe way
+to change that is a private network rather than a wider bind.
+
+**Tailscale (recommended).** Install it on both machines, sign in to the same
+account, then from the repo:
+
+```bash
+tailscale serve --bg 8720
+```
+
+That publishes `https://<machine>.<tailnet>.ts.net` on your tailnet and proxies
+to `127.0.0.1:8720` — the server keeps its loopback binding and never touches
+the wider network. Tell it which hostname to accept:
+
+```
+JARVIS_HOSTS=yourmachine.yourtailnet.ts.net
+```
+
+Restart, then open that URL on the phone. HTTPS matters for more than
+tidiness: Safari and Chrome only grant microphone access in a secure context,
+so Live voice works over `https://` and silently does not over `http://`.
+
+**Same Wi-Fi, no Tailscale.** Cruder, and only on a network you trust:
+
+```
+JARVIS_BIND=0.0.0.0
+JARVIS_HOSTS=192.168.1.50
+```
+
+The server says so loudly at startup, because JARVIS runs `claude` with
+bypassPermissions in your home directory — anything that can reach the port can
+run commands as you. The per-launch token still applies, but the token is
+handed to whoever loads the page. Do not do this on cafe or office Wi-Fi.
+
+Either way the Mac has to be awake with the server running. A sleeping laptop
+is a silent JARVIS; `caffeinate -s ./start.sh` keeps it up while plugged in.
+
 ## Security notes
 
 - Localhost bind, per-launch random API token, same-origin checks, bounded
