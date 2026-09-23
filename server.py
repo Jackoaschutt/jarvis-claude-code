@@ -286,7 +286,16 @@ def main():
     if BIND != "127.0.0.1":
         print(f"  !  bound to {BIND}, not loopback. Anything that can reach this\n"
               f"     port can run commands as you. Private network only.\n", flush=True)
-    srv = ThreadingHTTPServer((BIND, PORT), Handler)
+    try:
+        srv = ThreadingHTTPServer((BIND, PORT), Handler)
+    except OSError as e:
+        if e.errno not in (48, 98):          # EADDRINUSE on macOS / Linux
+            raise
+        print(f"  Port {PORT} is already in use — JARVIS is probably already\n"
+              f"  running in another tab. Use that one, or stop it first:\n"
+              f"      pkill -f 'python3 server.py'\n"
+              f"  Or run this one somewhere else:  JARVIS_PORT=8721 ./start.sh\n")
+        raise SystemExit(1)
     if os.environ.get("JARVIS_OPEN", "1") != "0":
         webbrowser.open(f"http://localhost:{PORT}")
     try:
