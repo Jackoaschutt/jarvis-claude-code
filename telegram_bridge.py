@@ -1,0 +1,199 @@
+"""
+Talk to JARVIS from Telegram.
+
+    python3 telegram_bridge.py
+
+Long-polls Telegram, hands each message to the JARVIS server on localhost, and
+sends the reply back — text, plus the Fish Audio voice as an audio clip if one
+is configured. Long polling means Telegram is dialled *out* to, so this needs
+no public URL, no port forwarding and no tunnel. The laptop just has to be
+awake with ./start.sh running.
+
+Setup:
+  1. Message @BotFather on Telegram, /newbot, copy the token.
+  2. Message @userinfobot to get your own numeric user id.
+  3. Put both in .env:
+        TELEGRAM_BOT_TOKEN=123456:AA...
+        TELEGRAM_ALLOWED_IDS=123456789
+  4. python3 telegram_bridge.py
+
+TELEGRAM_ALLOWED_IDS is not optional and the bridge refuses to start without
+it. JARVIS runs `claude` with bypassPermissions in your home directory, so an
+unrestricted bot is a shell that anyone who finds it can type into. Anything
+from an id not on that list is dropped and logged, never answered.
+"""
+import json
+import os
+import pathlib
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+
+ROOT = pathlib.Path(__file__).resolve().parent
+
+_env = ROOT / ".env"
+if _env.exists():
+    for line in _env.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+API = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+PORT = int(os.environ.get("JARVIS_PORT", "8720"))
+JARVIS = f"http://127.0.0.1:{PORT}"
+SEND_VOICE = os.environ.get("TELEGRAM_VOICE", "1").strip().lower() not in {"0", "false", "no"}
+POLL = int(os.environ.get("TELEGRAM_POLL", "30"))
+
+ALLOWED = {i.strip() for i in os.environ.get("TELEGRAM_ALLOWED_IDS", "").split(",") if i.strip()}
+
+
+def tg(method, payload=None, files=None):
+    """Telegram Bot API call. JSON, or multipart when sending a file."""
+    url = f"{API}/bot{TOKEN}/{method}"
+    if files:
+        boundary = "----jarvis" + os.urandom(8).hex()
+        b = boundary.encode()
+        parts = []
+        for k, v in (payload or {}).items():
+            parts += [b"--", b, b"\r\n",
+                      f'Content-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()]
+        for k, (name, data, ctype) in files.items():
+            parts += [b"--", b, b"\r\n",
+                      f'Content-Disposition: form-data; name="{k}"; filename="{name}"\r\n'.encode(),
+                      f"Content-Type: {ctype}\r\n\r\n".encode(), data, b"\r\n"]
+        parts += [b"--", b, b"--\r\n"]
+        body, ctype = b"".join(parts), f"multipart/form-data; boundary={boundary}"
+    else:
+        body, ctype = json.dumps(payload or {}).encode(), "application/json"
+    req = urllib.request.Request(url, data=body, method="POST",
+                                 headers={"content-type": ctype})
+    with urllib.request.urlopen(req, timeout=POLL + 30) as r:
+        return json.loads(r.read())
+
+
+def token():
+    """The per-launch API token, read off the page the server serves."""
+    req = urllib.request.Request(JARVIS + "/", headers={"Host": f"127.0.0.1:{PORT}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        m = re.search(r'jarvis-token" content="([^"]+)"', r.read().decode("utf-8", "replace"))
+    if not m:
+        raise RuntimeError("could not read the JARVIS token — is ./start.sh running?")
+    return m.group(1)
+
+
+def ask(message):
+    """One turn through JARVIS. Returns the reply text."""
+    body = json.dumps({"message": message}).encode()
+    req = urllib.request.Request(
+        JARVIS + "/api/run", data=body, method="POST",
+        headers={"content-type": "application/json", "Host": f"127.0.0.1:{PORT}",
+                 "Origin": JARVIS, "X-Jarvis-Token": token()})
+    out, error = [], None
+    with urllib.request.urlopen(req, timeout=300) as r:
+        for line in r:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("t") == "delta":
+                out.append(ev.get("text", ""))
+            elif ev.get("t") == "note":
+                out.append(ev.get("message", ""))
+            elif ev.get("t") == "error":
+                error = ev.get("message", "something went wrong")
+    if error and not out:
+        return f"[error] {error}"
+    return "".join(out).strip() or "No answer came back."
+
+
+def speak(text):
+    """mp3 bytes for the reply, or None if voice is off or unavailable."""
+    if not SEND_VOICE:
+        return None
+    # Delivery tags are stage directions for the voice, not for the reader.
+    spoken = re.sub(r"\[[^\]]{0,60}\]", " ", text)
+    spoken = " ".join(spoken.split())
+    if not spoken:
+        return None
+    body = json.dumps({"text": spoken[:2000]}).encode()
+    req = urllib.request.Request(
+        JARVIS + "/api/speak", data=body, method="POST",
+        headers={"content-type": "application/json", "Host": f"127.0.0.1:{PORT}",
+                 "Origin": JARVIS, "X-Jarvis-Token": token()})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            data = r.read()
+        return data if data[:3] == b"ID3" or data[:1] == b"\xff" else None
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        return None       # browser-voice fallback territory; text still goes out
+
+
+def handle(msg):
+    chat = str(((msg.get("chat") or {}).get("id")) or "")
+    sender = str(((msg.get("from") or {}).get("id")) or "")
+    if sender not in ALLOWED:
+        print(f"  refused message from id {sender or '?'}", flush=True)
+        return
+    text = (msg.get("text") or msg.get("caption") or "").strip()
+    if not text:
+        tg("sendMessage", {"chat_id": chat,
+                           "text": "Text only for now — voice notes are not wired up."})
+        return
+    if text.startswith("/start"):
+        tg("sendMessage", {"chat_id": chat, "text": "JARVIS is listening."})
+        return
+
+    tg("sendChatAction", {"chat_id": chat, "action": "typing"})
+    try:
+        reply = ask(text)
+    except Exception as e:                                    # noqa: BLE001
+        tg("sendMessage", {"chat_id": chat, "text": f"JARVIS is not answering: {str(e)[:200]}"})
+        return
+    tg("sendMessage", {"chat_id": chat, "text": reply[:4000]})
+    audio = speak(reply)
+    if audio:
+        tg("sendAudio", {"chat_id": chat, "title": "JARVIS"},
+           {"audio": ("jarvis.mp3", audio, "audio/mpeg")})
+
+
+def main():
+    if not TOKEN:
+        sys.exit("No TELEGRAM_BOT_TOKEN in .env. Get one from @BotFather.")
+    if not ALLOWED:
+        sys.exit("No TELEGRAM_ALLOWED_IDS in .env. Refusing to start.\n"
+                 "An open bot is a shell anyone can type into — JARVIS runs with\n"
+                 "full tool access. Message @userinfobot for your numeric id.")
+    try:
+        token()
+    except Exception as e:                                    # noqa: BLE001
+        sys.exit(f"Cannot reach JARVIS on {JARVIS}: {e}\nStart it with ./start.sh first.")
+
+    me = tg("getMe").get("result", {})
+    print(f"\n  bridge up · @{me.get('username', '?')} · {len(ALLOWED)} allowed id(s)")
+    print(f"  JARVIS    {JARVIS}")
+    print(f"  voice     {'on' if SEND_VOICE else 'off'}\n  Ctrl-C to stop.\n", flush=True)
+
+    offset = None
+    while True:
+        try:
+            payload = {"timeout": POLL, "allowed_updates": ["message"]}
+            if offset is not None:
+                payload["offset"] = offset
+            for update in tg("getUpdates", payload).get("result", []):
+                offset = update["update_id"] + 1
+                if update.get("message"):
+                    handle(update["message"])
+        except KeyboardInterrupt:
+            print("\n  bridge down.")
+            return
+        except Exception as e:                                # noqa: BLE001
+            print(f"  poll error: {str(e)[:160]}", flush=True)
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()

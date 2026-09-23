@@ -40,7 +40,20 @@ specific file.
 ## Run it
 
 ```bash
-cd jarvis-claude
+./setup.sh
+```
+
+One command, safe to re-run. It checks you have `python3` and the `claude` CLI,
+creates `.env`, takes your Fish Audio key without echoing it, lets you pick a
+voice from the real library by number, plays the result back so you can hear
+that it works, then starts the server on <http://localhost:8720>.
+
+Skip the key and it still runs — you just get the browser's robotic voice
+instead of a real one.
+
+Already set up, or want the pieces by hand:
+
+```bash
 python3 seed_vault.py     # writes a sample agency vault (skip if you have one)
 ./start.sh
 ```
@@ -98,7 +111,19 @@ FISH_AUDIO_VOICE_ID=612b878b113047d9a770c069c8b4fdfe   # Jarvis (MCU)
 ```
 
 Find voice ids with `GET https://api.fish.audio/model?title=<search>`. Check
-remaining quota with `GET /wallet/self/package`.
+remaining quota with `GET /wallet/self/package`. `voice_setup.py` wraps both,
+and proves the result is real audio rather than a JSON error with a hopeful
+content type:
+
+```
+python3 voice_setup.py voices jarvis   # search the library, print ids
+python3 voice_setup.py pick <id>       # write it into .env
+python3 voice_setup.py say             # writes voice-check.mp3, checks the bytes
+python3 voice_setup.py wallet          # TTS balance vs ASR credit
+```
+
+It reads the key from `.env` and never prints it — only a masked fingerprint,
+so you can run it on a shared screen.
 
 The key stays server-side. The browser only ever receives mp3 bytes from
 `/api/speak`, so it never appears in devtools, page source, or a screen capture.
@@ -165,6 +190,77 @@ All optional, all in `.env` — see `.env.example`.
 | `JARVIS_PERMISSION` | `bypassPermissions` | full tool access, no prompts — see Security notes |
 | `JARVIS_WORKDIR` | `~` | what Claude can see |
 | `CLAUDE_CMD` | auto-detected | absolute path if `claude` isn't on PATH |
+
+## On your phone
+
+JARVIS binds to loopback, so a phone cannot reach it by default. The safe way
+to change that is a private network rather than a wider bind.
+
+**Tailscale (recommended).** Install it on both machines, sign in to the same
+account, then from the repo:
+
+```bash
+tailscale serve --bg 8720
+```
+
+That publishes `https://<machine>.<tailnet>.ts.net` on your tailnet and proxies
+to `127.0.0.1:8720` — the server keeps its loopback binding and never touches
+the wider network. Tell it which hostname to accept:
+
+```
+JARVIS_HOSTS=yourmachine.yourtailnet.ts.net
+```
+
+Restart, then open that URL on the phone. HTTPS matters for more than
+tidiness: Safari and Chrome only grant microphone access in a secure context,
+so Live voice works over `https://` and silently does not over `http://`.
+
+**Same Wi-Fi, no Tailscale.** Cruder, and only on a network you trust:
+
+```
+JARVIS_BIND=0.0.0.0
+JARVIS_HOSTS=192.168.1.50
+```
+
+The server says so loudly at startup, because JARVIS runs `claude` with
+bypassPermissions in your home directory — anything that can reach the port can
+run commands as you. The per-launch token still applies, but the token is
+handed to whoever loads the page. Do not do this on cafe or office Wi-Fi.
+
+Either way the Mac has to be awake with the server running. A sleeping laptop
+is a silent JARVIS; `caffeinate -s ./start.sh` keeps it up while plugged in.
+
+## Telegram
+
+`telegram_bridge.py` puts JARVIS in a Telegram chat. It long-polls Telegram
+rather than receiving webhooks, so there is no public URL, no port forwarding
+and no tunnel — the laptop dials out. It only needs `./start.sh` already
+running.
+
+```
+TELEGRAM_BOT_TOKEN=123456:AA...        # @BotFather
+TELEGRAM_ALLOWED_IDS=123456789         # @userinfobot, comma-separated
+TELEGRAM_VOICE=1                       # also send the spoken reply as audio
+```
+
+```bash
+python3 telegram_setup.py     # asks for both, verifies the token, writes .env
+python3 telegram_bridge.py
+```
+
+`telegram_setup.py` takes the token without echoing it and without putting it
+through the shell, so it never lands in `~/.zsh_history`. It checks the token
+against Telegram before saving, so a revoked one is caught here rather than
+looking like a broken bridge, and it trims a token that got pasted twice.
+
+`TELEGRAM_ALLOWED_IDS` is required and the bridge exits without it. Bot
+usernames are discoverable and JARVIS runs `claude` with bypassPermissions in
+your home directory, so an unrestricted bot is a shell with a search box.
+Messages from any other id are dropped before they reach Claude and logged with
+the sender id.
+
+Delivery tags are stripped before the text is spoken, so `[dry]` performs
+rather than being read out in the audio clip.
 
 ## Security notes
 
