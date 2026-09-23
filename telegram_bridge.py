@@ -49,6 +49,9 @@ PORT = int(os.environ.get("JARVIS_PORT", "8720"))
 JARVIS = f"http://127.0.0.1:{PORT}"
 SEND_VOICE = os.environ.get("TELEGRAM_VOICE", "1").strip().lower() not in {"0", "false", "no"}
 POLL = int(os.environ.get("TELEGRAM_POLL", "30"))
+# Telegram rate-limits edits to a message; a few seconds apart is safe
+# and still reads as live.
+EDIT_EVERY = float(os.environ.get("TELEGRAM_EDIT_EVERY", "3"))
 
 ALLOWED = {i.strip() for i in os.environ.get("TELEGRAM_ALLOWED_IDS", "").split(",") if i.strip()}
 PIDFILE = ROOT / ".bridge.pid"
@@ -127,8 +130,12 @@ def token():
     return m.group(1)
 
 
-def ask(message):
-    """One turn through JARVIS. Returns the reply text."""
+def ask(message, on_step=None):
+    """One turn through JARVIS. Returns the reply text.
+
+    on_step, when given, is called with a one-line description of each tool
+    call as it happens, so a caller can show the working out somewhere.
+    """
     body = json.dumps({"message": message}).encode()
     req = urllib.request.Request(
         JARVIS + "/api/run", data=body, method="POST",
@@ -154,6 +161,8 @@ def ask(message):
             elif kind == "tool" and ev.get("phase") == "use":
                 detail = " ".join(str(ev.get("input") or "").split())[:88]
                 print(f"     → {ev.get('name', 'tool')}  {detail}", flush=True)
+                if on_step:
+                    on_step(f"{ev.get('name', 'tool')} {detail}".strip())
             elif kind == "tool" and ev.get("phase") == "result":
                 print(f"       {'ok' if ev.get('ok') else 'FAILED'}", flush=True)
     if error and not out:
@@ -201,13 +210,44 @@ def handle(msg):
     tg("sendChatAction", {"chat_id": chat, "action": "typing"})
     print(f"\n  ← {' '.join(text.split())[:100]}", flush=True)
     started = time.monotonic()
+
+    # A long turn is a minute of silence in Telegram, which is indistinguishable
+    # from a dead bot. Keep one message updated with what it is doing instead of
+    # posting a new one per step, which would bury the answer.
+    status, steps, last_edit = None, [], [0.0]
     try:
-        reply = ask(text)
+        status = (tg("sendMessage", {"chat_id": chat, "text": "⋯ thinking"})
+                  .get("result") or {}).get("message_id")
+    except Exception:                                         # noqa: BLE001
+        pass
+
+    def on_step(line):
+        if not status:
+            return
+        steps.append(line)
+        now = time.monotonic()
+        if now - last_edit[0] < EDIT_EVERY:        # Telegram rate-limits edits
+            return
+        last_edit[0] = now
+        body = f"⋯ working · {int(now - started)}s\n\n" + "\n".join(f"· {s}" for s in steps[-6:])
+        try:
+            tg("editMessageText", {"chat_id": chat, "message_id": status, "text": body[:3500]})
+        except Exception:                                     # noqa: BLE001
+            pass                                   # never let the view break the work
+
+    try:
+        reply = ask(text, on_step=on_step)
     except Exception as e:                                    # noqa: BLE001
         print(f"  ! {str(e)[:160]}", flush=True)
+        # Leave the status up on failure — it shows how far it got.
         tg("sendMessage", {"chat_id": chat, "text": f"JARVIS is not answering: {str(e)[:200]}"})
         return
     print(f"  → {' '.join(reply.split())[:100]}  ({time.monotonic() - started:.0f}s)", flush=True)
+    if status:
+        try:
+            tg("deleteMessage", {"chat_id": chat, "message_id": status})
+        except Exception:                                     # noqa: BLE001
+            pass
     tg("sendMessage", {"chat_id": chat, "text": reply[:4000]})
     audio = speak(reply)
     if audio:
