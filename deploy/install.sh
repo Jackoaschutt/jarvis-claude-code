@@ -72,6 +72,10 @@ cat > "$UNIT_DIR/jarvis.service" <<UNIT
 Description=JARVIS memory HUD
 After=network-online.target
 Wants=network-online.target
+# Never stop retrying. The default gives up after a few rapid restarts and
+# leaves the unit dead, which on a small box means one memory spike takes
+# JARVIS off the air until somebody notices hours later.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -92,10 +96,21 @@ UNIT
 cat > "$UNIT_DIR/jarvis-bridge.service" <<UNIT
 [Unit]
 Description=JARVIS Telegram bridge
-# The bridge reads the server's per-launch token at startup, so it has to
-# come after it — and be restarted with it.
+# Start after the server, but do NOT bind to it.
+#
+# BindsTo used to be here, and it is a trap: when the server dies, systemd
+# *stops* the bridge rather than failing it — and Restart=always does not
+# apply to a unit that was stopped on purpose. The server then restarts
+# itself and the bridge stays down, so the bot goes quiet with a healthy
+# looking server beside it. That is silent, and it lasts until a human
+# intervenes.
+#
+# Wants gives the ordering without the stop propagation. The bridge already
+# copes with a missing server: it re-reads the token on every turn and
+# retries its poll loop.
 After=jarvis.service
-BindsTo=jarvis.service
+Wants=jarvis.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
