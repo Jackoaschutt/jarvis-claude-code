@@ -29,6 +29,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -52,6 +53,14 @@ POLL = int(os.environ.get("TELEGRAM_POLL", "30"))
 # Telegram rate-limits edits to a message; a few seconds apart is safe
 # and still reads as live.
 EDIT_EVERY = float(os.environ.get("TELEGRAM_EDIT_EVERY", "3"))
+# How long JARVIS may go silent before the bridge stops waiting. This is
+# silence *between* events, not the length of the turn, so it only trips when
+# one tool call runs long with nothing to say — an npm install or a build on a
+# small box, which is exactly the case that used to read as "timed out".
+ASK_TIMEOUT = int(os.environ.get("TELEGRAM_ASK_TIMEOUT", "900"))
+# The status line ticks on its own as well as on tool calls: a frozen status
+# and a dead bot look identical from the sofa.
+HEARTBEAT = float(os.environ.get("TELEGRAM_HEARTBEAT", "15"))
 
 ALLOWED = {i.strip() for i in os.environ.get("TELEGRAM_ALLOWED_IDS", "").split(",") if i.strip()}
 PIDFILE = ROOT / ".bridge.pid"
@@ -94,6 +103,15 @@ def release():
             PIDFILE.unlink()
     except (OSError, ValueError):
         pass
+
+
+class Busy(Exception):
+    """JARVIS is mid-turn. Not a fault: the previous question is still running,
+    and the server refuses a second one rather than interleaving them."""
+
+    def __init__(self, seconds=0):
+        self.seconds = seconds
+        super().__init__(f"busy for {seconds}s")
 
 
 def tg(method, payload=None, files=None):
@@ -142,7 +160,18 @@ def ask(message, on_step=None):
         headers={"content-type": "application/json", "Host": f"127.0.0.1:{PORT}",
                  "Origin": JARVIS, "X-Jarvis-Token": token()})
     out, error = [], None
-    with urllib.request.urlopen(req, timeout=300) as r:
+    try:
+        response = urllib.request.urlopen(req, timeout=ASK_TIMEOUT)
+    except urllib.error.HTTPError as e:
+        if e.code != 409:
+            raise
+        seconds = 0
+        try:
+            seconds = int((json.loads(e.read(400)).get("running_for_ms") or 0) / 1000)
+        except Exception:                                     # noqa: BLE001
+            pass
+        raise Busy(seconds) from None
+    with response as r:
         for line in r:
             try:
                 ev = json.loads(line)
@@ -192,6 +221,69 @@ def speak(text):
         return None       # browser-voice fallback territory; text still goes out
 
 
+def cancel():
+    """Drop whatever turn is running. True if something was actually stopped."""
+    req = urllib.request.Request(
+        JARVIS + "/api/cancel", data=b"{}", method="POST",
+        headers={"content-type": "application/json", "Host": f"127.0.0.1:{PORT}",
+                 "Origin": JARVIS, "X-Jarvis-Token": token()})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return bool(json.loads(r.read()).get("stopped"))
+
+
+class Status:
+    """The one message in the chat that shows what JARVIS is doing.
+
+    It ticks on a thread as well as on tool calls, because a long build emits
+    nothing for minutes and a status frozen at "thinking" is indistinguishable
+    from a bot that has fallen over — which is how a perfectly healthy JARVIS
+    ends up being restarted.
+    """
+
+    def __init__(self, chat):
+        self.chat, self.steps = chat, []
+        self.started, self.last = time.monotonic(), 0.0
+        self.lock, self.stop, self.id = threading.Lock(), threading.Event(), None
+        try:
+            self.id = (tg("sendMessage", {"chat_id": chat, "text": "⋯ thinking"})
+                       .get("result") or {}).get("message_id")
+        except Exception:                                     # noqa: BLE001
+            return                                 # no status line; the work still runs
+        threading.Thread(target=self._tick, daemon=True).start()
+
+    def _tick(self):
+        while not self.stop.wait(HEARTBEAT):
+            self.draw(force=True)
+
+    def step(self, line):
+        with self.lock:
+            self.steps.append(line)
+        self.draw()
+
+    def draw(self, force=False):
+        if not self.id or self.stop.is_set():
+            return
+        now = time.monotonic()
+        with self.lock:
+            if not force and now - self.last < EDIT_EVERY:     # Telegram rate-limits edits
+                return
+            self.last, steps = now, list(self.steps[-6:])
+        body = f"⋯ working · {int(now - self.started)}s\n\n" + "\n".join(f"· {s}" for s in steps)
+        try:
+            tg("editMessageText", {"chat_id": self.chat, "message_id": self.id,
+                                   "text": body[:3500]})
+        except Exception:                                     # noqa: BLE001
+            pass                                   # never let the view break the work
+
+    def done(self, keep=False):
+        self.stop.set()
+        if self.id and not keep:
+            try:
+                tg("deleteMessage", {"chat_id": self.chat, "message_id": self.id})
+            except Exception:                                 # noqa: BLE001
+                pass
+
+
 def handle(msg):
     chat = str(((msg.get("chat") or {}).get("id")) or "")
     sender = str(((msg.get("from") or {}).get("id")) or "")
@@ -203,8 +295,29 @@ def handle(msg):
         tg("sendMessage", {"chat_id": chat,
                            "text": "Text only for now — voice notes are not wired up."})
         return
-    if text.startswith("/start"):
-        tg("sendMessage", {"chat_id": chat, "text": "JARVIS is listening."})
+    if text.startswith("/start") or text.startswith("/help"):
+        tg("sendMessage", {"chat_id": chat, "text":
+            "JARVIS is listening.\n\n"
+            "/cancel — drop the turn that is running\n"
+            "/status — is the server actually there"})
+        return
+    if text.startswith("/cancel"):
+        try:
+            stopped = cancel()
+        except Exception as e:                                # noqa: BLE001
+            tg("sendMessage", {"chat_id": chat, "text": f"Could not reach JARVIS: {str(e)[:150]}"})
+            return
+        tg("sendMessage", {"chat_id": chat,
+                           "text": "Stopped it. Ask me something else."
+                           if stopped else "Nothing was running."})
+        return
+    if text.startswith("/status"):
+        try:
+            token()
+            tg("sendMessage", {"chat_id": chat, "text": "Bridge up, JARVIS reachable."})
+        except Exception as e:                                # noqa: BLE001
+            tg("sendMessage", {"chat_id": chat,
+                               "text": f"Bridge up, but JARVIS is not answering: {str(e)[:150]}"})
         return
 
     tg("sendChatAction", {"chat_id": chat, "action": "typing"})
@@ -214,40 +327,33 @@ def handle(msg):
     # A long turn is a minute of silence in Telegram, which is indistinguishable
     # from a dead bot. Keep one message updated with what it is doing instead of
     # posting a new one per step, which would bury the answer.
-    status, steps, last_edit = None, [], [0.0]
+    status = Status(chat)
     try:
-        status = (tg("sendMessage", {"chat_id": chat, "text": "⋯ thinking"})
-                  .get("result") or {}).get("message_id")
-    except Exception:                                         # noqa: BLE001
-        pass
-
-    def on_step(line):
-        if not status:
-            return
-        steps.append(line)
-        now = time.monotonic()
-        if now - last_edit[0] < EDIT_EVERY:        # Telegram rate-limits edits
-            return
-        last_edit[0] = now
-        body = f"⋯ working · {int(now - started)}s\n\n" + "\n".join(f"· {s}" for s in steps[-6:])
-        try:
-            tg("editMessageText", {"chat_id": chat, "message_id": status, "text": body[:3500]})
-        except Exception:                                     # noqa: BLE001
-            pass                                   # never let the view break the work
-
-    try:
-        reply = ask(text, on_step=on_step)
+        reply = ask(text, on_step=status.step)
+    except Busy as b:
+        # Not an error. The previous question is still running, and saying
+        # "HTTP Error 409: Conflict" to someone on their phone is useless.
+        status.done()
+        been = f"{b.seconds // 60}m {b.seconds % 60}s in" if b.seconds else "still going"
+        tg("sendMessage", {"chat_id": chat, "text":
+            f"Still working on the last thing ({been}). It is not stuck — a build on "
+            f"this box can run for minutes with nothing to show.\n\n"
+            f"Wait for it, or send /cancel to drop it and ask again."})
+        return
     except Exception as e:                                    # noqa: BLE001
         print(f"  ! {str(e)[:160]}", flush=True)
-        # Leave the status up on failure — it shows how far it got.
-        tg("sendMessage", {"chat_id": chat, "text": f"JARVIS is not answering: {str(e)[:200]}"})
+        status.done(keep=True)          # leave it up on failure: it shows how far it got
+        if "timed out" in str(e).lower():
+            tg("sendMessage", {"chat_id": chat, "text":
+                f"No word from JARVIS for {ASK_TIMEOUT // 60} minutes, so I stopped "
+                f"waiting. The turn is most likely still running on the server — long "
+                f"builds go quiet.\n\n"
+                f"Give it a bit and ask again, or send /cancel to drop it."})
+        else:
+            tg("sendMessage", {"chat_id": chat, "text": f"JARVIS is not answering: {str(e)[:200]}"})
         return
     print(f"  → {' '.join(reply.split())[:100]}  ({time.monotonic() - started:.0f}s)", flush=True)
-    if status:
-        try:
-            tg("deleteMessage", {"chat_id": chat, "message_id": status})
-        except Exception:                                     # noqa: BLE001
-            pass
+    status.done()
     tg("sendMessage", {"chat_id": chat, "text": reply[:4000]})
     audio = speak(reply)
     if audio:

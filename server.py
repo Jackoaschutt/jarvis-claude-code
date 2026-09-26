@@ -60,6 +60,9 @@ def _hosts():
 HOSTS = _hosts()
 API_TOKEN = secrets.token_urlsafe(32)
 RUN_LOCK = threading.Lock()
+# When the current turn started, so a caller that gets turned away can be
+# told "still working, six minutes in" rather than a bare 409.
+RUN_STARTED = {"at": 0.0}
 MAX_JSON = 1024 * 1024
 MAX_AUDIO = 12 * 1024 * 1024
 SESSION = {"id": None}
@@ -183,10 +186,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/run":
             if not RUN_LOCK.acquire(blocking=False):
-                return self._json({"error": "JARVIS is already processing a request"}, 409)
+                busy = int((time.time() - RUN_STARTED["at"]) * 1000) if RUN_STARTED["at"] else 0
+                return self._json({"error": "JARVIS is already processing a request",
+                                   "busy": True, "running_for_ms": busy}, 409)
+            RUN_STARTED["at"] = time.time()
             try:
                 return self._stream(raw)
             finally:
+                RUN_STARTED["at"] = 0.0
                 RUN_LOCK.release()
 
         return self._json({"error": "no such endpoint"}, 404)
