@@ -241,7 +241,20 @@ running.
 TELEGRAM_BOT_TOKEN=123456:AA...        # @BotFather
 TELEGRAM_ALLOWED_IDS=123456789         # @userinfobot, comma-separated
 TELEGRAM_VOICE=1                       # also send the spoken reply as audio
+TELEGRAM_ASK_TIMEOUT=900               # seconds of silence before it stops waiting
+TELEGRAM_HEARTBEAT=15                  # how often the status line ticks
 ```
+
+In the chat: `/cancel` drops the turn that is running, `/status` says whether the
+server is reachable.
+
+A real build on a small box goes quiet for minutes at a time, and the two ways
+that used to surface were both wrong. It would say **timed out** while the turn
+was still running perfectly well, and then answer the next message with **HTTP
+Error 409: Conflict** — which is the server correctly refusing to run two turns
+at once, phrased for nobody. Now the status line ticks on its own clock so a
+silent build still looks alive, `TELEGRAM_ASK_TIMEOUT` is long enough to cover
+one, and both cases say what is actually happening and offer `/cancel`.
 
 ```bash
 python3 telegram_setup.py     # asks for both, verifies the token, writes .env
