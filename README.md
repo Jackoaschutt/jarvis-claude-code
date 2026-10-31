@@ -291,6 +291,18 @@ refuses `bypassPermissions` as root and would otherwise fail every turn; and
 stop the bridge on your laptop, because two bridges on one bot take turns
 stealing each other's messages.
 
+Both services log to the journal rather than to files:
+
+```bash
+journalctl --user -u jarvis-bridge -f     # or sudo journalctl -u … on system units
+```
+
+Earlier versions pointed systemd's `append:` at `logs/*.log`, which never
+rotates — on a box left running for months that is the thing that quietly fills
+the disk, and a full disk is a worse failure than a crash: JARVIS keeps
+answering while every write underneath it fails. The journal caps itself, the
+installer caps it tighter still, and it warns if the disk is above 85%.
+
 ## Security notes
 
 - Localhost bind, per-launch random API token, same-origin checks, bounded

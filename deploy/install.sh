@@ -64,7 +64,28 @@ fi
 [ "$fail" -eq 1 ] && { echo; echo "  Fix the above, then run ./deploy/install.sh again."; echo; exit 1; }
 
 # ── units ───────────────────────────────────────────────────────
-mkdir -p logs "$HOME_DIR/.config/systemd/user"
+mkdir -p "$HOME_DIR/.config/systemd/user"
+
+# ── disk ────────────────────────────────────────────────────────
+# A full disk is the nastiest failure this thing has: JARVIS keeps answering
+# but every write fails, so it reports success on work that never landed.
+# Worth one line here, months before it bites.
+USED="$(df --output=pcent / 2>/dev/null | tr -dc '0-9')"
+if [ -n "$USED" ] && [ "$USED" -ge 85 ]; then
+  bad "disk is ${USED}% full — JARVIS will start failing writes"
+  note "find it:  sudo du -h -d1 -x / 2>/dev/null | sort -h | tail -12"
+  note "quick wins:  sudo journalctl --vacuum-size=100M && sudo apt-get clean && npm cache clean --force"
+elif [ -n "$USED" ]; then
+  ok "disk ${USED}% used"
+fi
+
+# Older installs sent both services to logs/*.log with systemd append:, which
+# never rotates — on a long-running box that is the thing that fills the disk.
+# They log to the journal now, which caps itself, so these are dead weight.
+if [ -d logs ] && [ -n "$(ls -A logs 2>/dev/null)" ]; then
+  FREED="$(du -sh logs 2>/dev/null | cut -f1)"
+  rm -f logs/*.log && ok "cleared $FREED of un-rotated logs (the journal holds them now)"
+fi
 UNIT_DIR="$HOME_DIR/.config/systemd/user"
 
 cat > "$UNIT_DIR/jarvis.service" <<UNIT
@@ -86,8 +107,6 @@ RestartSec=5
 # No browser on a headless box, and the CLI needs HOME to find its login.
 Environment=JARVIS_OPEN=0
 Environment=HOME=$HOME_DIR
-StandardOutput=append:$DIR/logs/server.log
-StandardError=append:$DIR/logs/server.log
 
 [Install]
 WantedBy=default.target
@@ -119,14 +138,24 @@ ExecStart=/usr/bin/env python3 $DIR/telegram_bridge.py
 Restart=always
 RestartSec=10
 Environment=HOME=$HOME_DIR
-StandardOutput=append:$DIR/logs/bridge.log
-StandardError=append:$DIR/logs/bridge.log
 
 [Install]
 WantedBy=default.target
 UNIT
 
 ok "wrote jarvis.service and jarvis-bridge.service"
+
+# systemd's own default is 10% of the filesystem — 2.4G on a small VPS, which
+# is a lot of room to give logs on a box that is short of it.
+if [ -d /etc/systemd ] && sudo -n true 2>/dev/null; then
+  sudo mkdir -p /etc/systemd/journald.conf.d
+  printf '[Journal]\nSystemMaxUse=200M\n' | sudo tee /etc/systemd/journald.conf.d/jarvis.conf >/dev/null \
+    && sudo systemctl restart systemd-journald 2>/dev/null \
+    && ok "journal capped at 200M"
+else
+  note "to cap the journal (it defaults to 10% of the disk):"
+  note "    sudo journalctl --vacuum-size=200M"
+fi
 
 # Without lingering, user services stop the moment you log out of SSH —
 # which is exactly when you need them to keep running.
@@ -198,7 +227,6 @@ done
 echo
 bold "From now on"
 note "watch:    journalctl --user -u jarvis-bridge -f"
-note "or:       tail -f $DIR/logs/bridge.log"
 note "restart:  systemctl --user restart jarvis jarvis-bridge"
 note "stop:     systemctl --user stop jarvis jarvis-bridge"
 note "update:   git pull && systemctl --user restart jarvis jarvis-bridge"
