@@ -129,7 +129,19 @@ class Handler(BaseHTTPRequestHandler):
                 links=len(g["links"]), voice=voice.describe(),
                 listener=voice.describe_stt(), stt=voice.stt_kind(),
                 server_stt=voice.stt_kind() in ("whisper", "fish"),
-                server_voice=voice.available(), session=SESSION["id"]))
+                server_voice=voice.available(), session=SESSION["id"],
+                demo=commands.DEMO))
+
+        if p == "/api/activity":
+            try:
+                vault = memory.build_graph()["vault"]
+                recent = journal.recent(vault, 5)
+            except Exception:                                 # noqa: BLE001
+                recent = []          # the readout must never be what breaks
+            return self._json(dict(
+                busy=RUN_LOCK.locked(), since=LIVE["since"], done=LIVE["done"],
+                message=LIVE["message"], steps=LIVE["steps"][-8:],
+                host=host(), recent=recent))
 
         if p == "/api/activity":
             try:
