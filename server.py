@@ -143,17 +143,6 @@ class Handler(BaseHTTPRequestHandler):
                 message=LIVE["message"], steps=LIVE["steps"][-8:],
                 host=host(), recent=recent))
 
-        if p == "/api/activity":
-            try:
-                vault = memory.build_graph()["vault"]
-                recent = journal.recent(vault, 5)
-            except Exception:                                 # noqa: BLE001
-                recent = []          # the readout must never be what breaks
-            return self._json(dict(
-                busy=RUN_LOCK.locked(), since=LIVE["since"], done=LIVE["done"],
-                message=LIVE["message"], steps=LIVE["steps"][-8:],
-                host=host(), recent=recent))
-
         if p == "/api/graph":
             force = parse_qs(urlparse(self.path).query).get("force", ["0"])[0] == "1"
             return self._json(memory.build_graph(force=force))
