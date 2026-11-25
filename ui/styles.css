@@ -223,3 +223,37 @@ body.live .reactor-mini span{animation:pulse 1.4s ease-in-out infinite}
 @media (max-width:1280px){
   .grid{grid-template-columns:250px 1fr 260px}
 }
+
+/* ── phones ────────────────────────────────── */
+/* Three columns means 590px of fixed rails before the graph gets a pixel, so
+   below this the HUD stops being a layout and becomes a horizontal scrollbar:
+   you land on the inspector and never find the ask bar. Stack it instead, and
+   lead with what you came for — ask, answer, what it is doing — with the graph
+   below rather than taking the screen. */
+@media (max-width:820px){
+  /* The desktop HUD is a viewport-height flex column with every pane scrolling
+     inside itself. Stacked on a phone that makes the content spill out of a
+     fixed-height grid and draw over the pane below, so the page itself has to
+     become the thing that scrolls. */
+  html,body{height:auto}
+  body{overflow:auto;display:block}
+  .grid{flex:none}
+  .topbar{flex-wrap:wrap;gap:10px;padding:10px 12px}
+  .pills{flex-wrap:wrap}
+  .grid{grid-template-columns:1fr;grid-template-rows:none;
+    gap:10px;padding:10px 10px 20px;overflow:visible}
+  .rail,.stage{min-height:0;overflow:visible}
+  .stage{order:1}
+  .rail.right{order:2}            /* action log and telemetry before the menus */
+  .rail.left{order:3}
+  .panel.grow{flex:0 0 auto}
+  .askbar{order:1;flex-wrap:wrap;gap:8px}
+  .asklabel{flex:0 0 auto}
+  /* Its own row, and 16px: any smaller and iOS zooms the page on focus. */
+  #ask{flex:1 1 100%;order:-1;font-size:16px}
+  .convo{order:2;max-height:46vh}
+  .bubble{max-width:92%}
+  .stagetools{order:3}
+  .canvaswrap{order:4;flex:0 0 auto;height:44vh;min-height:0}
+  .log{max-height:44vh}
+}
