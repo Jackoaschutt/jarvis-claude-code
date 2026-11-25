@@ -85,6 +85,22 @@ Types drive the colours in the filter legend: `client`, `project`, `call`,
 Point it at a real Obsidian vault with `JARVIS_VAULT=~/Documents/MyVault`. The
 graph reloads from disk automatically when files change, or on `/graph`.
 
+**Clear the sample before you rely on it.** `seed_vault.py` writes an invented
+agency so a fresh install has a graph worth looking at, and
+`commands.context_block` puts matching notes into Claude's system prompt every
+turn — so left in place, JARVIS reasons about your business with nine
+fictional clients in its context and never mentions it.
+
+```bash
+python3 clear_sample_vault.py          # show what would go
+python3 clear_sample_vault.py --yes    # remove it
+```
+
+It works out what to remove by running `seed_vault.py` into a temporary
+directory and deleting exactly those filenames, so it cannot touch a note the
+sample never created — yours, the `Build log`, anything written in Obsidian.
+`python3 seed_vault.py` puts the sample back.
+
 ## Commands
 
 | command | does |
