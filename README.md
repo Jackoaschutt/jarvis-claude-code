@@ -215,6 +215,12 @@ Restart, then open that URL on the phone. HTTPS matters for more than
 tidiness: Safari and Chrome only grant microphone access in a secure context,
 so Live voice works over `https://` and silently does not over `http://`.
 
+Below 820px the three columns stack into one, and the order changes: ask bar
+first, then the graph, then the action log, with the menus last. The desktop
+HUD is a viewport-height flex column with each pane scrolling inside itself,
+which on a phone makes panes draw over each other — so on narrow screens the
+page itself becomes the thing that scrolls.
+
 **Same Wi-Fi, no Tailscale.** Cruder, and only on a network you trust:
 
 ```
