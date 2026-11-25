@@ -12,6 +12,7 @@ import mimetypes
 import os
 import pathlib
 import secrets
+import shutil
 import sys
 import threading
 import time
@@ -63,6 +64,10 @@ RUN_LOCK = threading.Lock()
 # When the current turn started, so a caller that gets turned away can be
 # told "still working, six minutes in" rather than a bare 409.
 RUN_STARTED = {"at": 0.0}
+# What the current turn is doing, readable by something other than the client
+# that started it. From outside, a turn that is working hard and a turn that
+# has hung look identical — that ambiguity is what this exists to remove.
+LIVE = {"since": 0.0, "done": 0.0, "message": "", "steps": []}
 MAX_JSON = 1024 * 1024
 MAX_AUDIO = 12 * 1024 * 1024
 SESSION = {"id": None}
@@ -125,6 +130,17 @@ class Handler(BaseHTTPRequestHandler):
                 listener=voice.describe_stt(), stt=voice.stt_kind(),
                 server_stt=voice.stt_kind() in ("whisper", "fish"),
                 server_voice=voice.available(), session=SESSION["id"]))
+
+        if p == "/api/activity":
+            try:
+                vault = memory.build_graph()["vault"]
+                recent = journal.recent(vault, 5)
+            except Exception:                                 # noqa: BLE001
+                recent = []          # the readout must never be what breaks
+            return self._json(dict(
+                busy=RUN_LOCK.locked(), since=LIVE["since"], done=LIVE["done"],
+                message=LIVE["message"], steps=LIVE["steps"][-8:],
+                host=host(), recent=recent))
 
         if p == "/api/graph":
             force = parse_qs(urlparse(self.path).query).get("force", ["0"])[0] == "1"
@@ -241,6 +257,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             message = cmd["message"]
 
+        LIVE.update(since=time.time(), done=0.0, message=message[:120], steps=[])
         system = commands.context_block(message) or None
         hit = memory.top_match(message)
         if hit:
@@ -254,6 +271,9 @@ class Handler(BaseHTTPRequestHandler):
                     SESSION["id"] = None
                 if ev.get("t") == "tool" and ev.get("phase") == "use":
                     actions.append({"name": ev.get("name", "tool"), "input": ev.get("input")})
+                    if len(LIVE["steps"]) < 40:        # bounded: a long turn must not grow memory
+                        detail = " ".join(str(ev.get("input") or "").split())[:70]
+                        LIVE["steps"].append(f"{ev.get('name', 'tool')} {detail}".strip())
                 if ev.get("t") == "complete":
                     took = ev.get("ms") or 0
                 emit(ev)
@@ -264,6 +284,7 @@ class Handler(BaseHTTPRequestHandler):
                 emit(dict(t="error", message=str(e)[:300]))
             except OSError:
                 pass
+        LIVE["done"] = time.time()
         # A session remembers this conversation; the vault remembers the work.
         # Written after the stream so a slow disk never stalls the reply.
         try:
@@ -271,6 +292,41 @@ class Handler(BaseHTTPRequestHandler):
                 memory.build_graph(force=True)
         except Exception:  # noqa: BLE001
             pass            # journalling must never take the turn down with it
+
+
+def host():
+    """Disk, memory and uptime.
+
+    These three are not decoration: a full disk, an exhausted 1GB of RAM and a
+    box that silently rebooted are the things that have actually taken JARVIS
+    off the air. They belong next to "is it working", not in a separate place
+    nobody looks.
+    """
+    out = {}
+    try:
+        total, used, free = shutil.disk_usage("/")
+        out["disk_pct"] = round(used * 100 / total)
+        out["disk_free_gb"] = round(free / 1e9, 1)
+    except OSError:
+        pass
+    try:                                  # Linux only; absent on a Mac, fine
+        info = {}
+        for line in pathlib.Path("/proc/meminfo").read_text().splitlines():
+            k, _, v = line.partition(":")
+            info[k] = int(v.split()[0])
+        if info.get("MemTotal"):
+            out["mem_pct"] = round(
+                (info["MemTotal"] - info.get("MemAvailable", 0)) * 100 / info["MemTotal"])
+        if info.get("SwapTotal"):
+            out["swap_pct"] = round(
+                (info["SwapTotal"] - info.get("SwapFree", 0)) * 100 / info["SwapTotal"])
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        out["uptime_s"] = int(float(pathlib.Path("/proc/uptime").read_text().split()[0]))
+    except (OSError, ValueError, IndexError):
+        pass
+    return out
 
 
 def main():

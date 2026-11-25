@@ -245,8 +245,26 @@ TELEGRAM_ASK_TIMEOUT=900               # seconds of silence before it stops wait
 TELEGRAM_HEARTBEAT=15                  # how often the status line ticks
 ```
 
-In the chat: `/cancel` drops the turn that is running, `/status` says whether the
-server is reachable.
+In the chat: `/cancel` drops the turn that is running, `/status` says what
+JARVIS is doing right now:
+
+```
+⚙ working · 2m 14s
+build the urgency ranker
+  · Edit urgency.ts
+  · Bash npm run build
+
+up 4d 6h · disk 71% · mem 48% · swap 40%
+
+Recently built:
+· 2026-11-24  lead scoring endpoint
+```
+
+The machine numbers are there because they are what actually takes JARVIS off
+the air — a full disk, exhausted RAM, a box that rebooted — and they were
+previously only visible by SSHing in to look. `/status` warns outright above
+85% disk. The "recently built" lines come from the vault's own `Build log`, so
+the status view and a `/recall` of the same work cannot disagree.
 
 A real build on a small box goes quiet for minutes at a time, and the two ways
 that used to surface were both wrong. It would say **timed out** while the turn

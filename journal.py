@@ -91,3 +91,27 @@ def record(vault, question, actions, ms=0, today=None):
         text = blocks[0] + "\n## " + "\n## ".join(blocks[1:MAX_ENTRIES])
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def recent(vault, limit=5):
+    """The last few things JARVIS built, newest first.
+
+    Reads the note rather than keeping a second copy of the same facts: the
+    status view and the vault search then agree by construction, and there is
+    no state to go stale when one of them is restarted.
+    """
+    path = pathlib.Path(vault) / f"{NOTE}.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out = []
+    for block in text.split("\n## ")[1:]:
+        head, _, rest = block.partition("\n")
+        stamp, _, title = head.partition(" \u2014 ")
+        out.append({"date": stamp.strip(),
+                    "title": (title.strip() or "untitled"),
+                    "lines": [l[2:] for l in rest.splitlines() if l.startswith("- ")]})
+        if len(out) >= limit:
+            break
+    return out
