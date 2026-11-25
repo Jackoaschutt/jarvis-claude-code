@@ -1,5 +1,11 @@
 .env
 state.json
+
+# Your vault is your data, not the project's. Tracking it meant `git pull`
+# could resurrect notes you deleted and `git stash` could undo your edits —
+# both of which happened — and it put real business notes one `git commit`
+# away from a public repository. `seed_vault.py` writes the sample on demand.
+vault/*.md
 __pycache__/
 *.pyc
 raw-*.log

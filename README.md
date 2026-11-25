@@ -85,6 +85,13 @@ Types drive the colours in the filter legend: `client`, `project`, `call`,
 Point it at a real Obsidian vault with `JARVIS_VAULT=~/Documents/MyVault`. The
 graph reloads from disk automatically when files change, or on `/graph`.
 
+**Your vault is not tracked by git.** `vault/*.md` is gitignored and the
+sample notes are no longer committed, because tracking them meant `git pull`
+could resurrect notes you had deleted and `git stash` could undo your edits —
+both of which happened here — and it put real business notes one `git commit`
+away from a public repository. A fresh clone has an empty vault; run
+`seed_vault.py` if you want the sample.
+
 **Clear the sample before you rely on it.** `seed_vault.py` writes an invented
 agency so a fresh install has a graph worth looking at, and
 `commands.context_block` puts matching notes into Claude's system prompt every
