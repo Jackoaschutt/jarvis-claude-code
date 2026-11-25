@@ -129,7 +129,8 @@ class Handler(BaseHTTPRequestHandler):
                 links=len(g["links"]), voice=voice.describe(),
                 listener=voice.describe_stt(), stt=voice.stt_kind(),
                 server_stt=voice.stt_kind() in ("whisper", "fish"),
-                server_voice=voice.available(), session=SESSION["id"]))
+                server_voice=voice.available(), session=SESSION["id"],
+                demo=commands.DEMO))
 
         if p == "/api/activity":
             try:

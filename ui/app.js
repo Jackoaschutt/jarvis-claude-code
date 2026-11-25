@@ -191,6 +191,10 @@ async function loadStatus() {
     window.__serverVoice = s.server_voice;
     window.__serverSTT = s.server_stt;
     if (s.listener) $('#btnMic').title = 'Listening via ' + s.listener;
+    // The badge used to be hardcoded in the markup, so it read DEMO whether or
+    // not fixtures were on. A badge that is always lit says nothing, and here
+    // it said the opposite of the truth.
+    $('#demoBadge').hidden = !s.demo;
   } catch (e) { $('#pGateway').textContent = 'offline'; }
 }
 
