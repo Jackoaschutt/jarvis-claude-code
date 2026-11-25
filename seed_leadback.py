@@ -354,6 +354,18 @@ working system gets destroyed. JARVIS runs the weekly check.
 ]
 
 
+# Notes an earlier version of this script wrote that the current one does not
+# replace by name. Two of them answer questions this vault now knows the answer
+# to — a note reading "pricing: not known" sitting beside one reading "$79 a
+# month" is worse than either alone, because retrieval may reach the wrong one.
+SUPERSEDED = [
+    "LeadBack app",              # -> The product, The webhooks
+    "Urgency ranking",           # -> Urgency scorer
+    "Open question — Pricing",   # -> Pricing ($79/month)
+    "Open question — Customers",  # -> Traction (six leads, zero clients)
+]
+
+
 def body_for(title, ntype, text, links):
     link_line = ("\n\n" + " ".join(f"[[{l}]]" for l in links)) if links else ""
     return (f"---\ntype: {ntype}\nupdated: {TODAY}\n---\n\n"
@@ -376,6 +388,13 @@ def main():
         if write:
             (vault / f"{title}.md").write_text(body_for(title, ntype, text, links),
                                                encoding="utf-8")
+    for title in SUPERSEDED:
+        stale = vault / f"{title}.md"
+        if stale.exists():
+            print(f"    {'remove':<10} {title}  (superseded)")
+            if write:
+                stale.unlink()
+
     # The Build log hangs off [[Agency]] in older vaults — a note the sample
     # provided. With the sample cleared that link dangles and the one genuine
     # record of what JARVIS built floats unconnected. journal.py migrates it on
