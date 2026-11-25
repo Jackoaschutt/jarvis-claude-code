@@ -221,6 +221,67 @@ def speak(text):
         return None       # browser-voice fallback territory; text still goes out
 
 
+def activity():
+    """Everything the status view needs, in one call."""
+    req = urllib.request.Request(JARVIS + "/api/activity",
+                                 headers={"Host": f"127.0.0.1:{PORT}"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
+def _ago(seconds):
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60}s"
+    if s < 86400:
+        return f"{s // 3600}h {(s % 3600) // 60}m"
+    return f"{s // 86400}d {(s % 86400) // 3600}h"
+
+
+def status_text():
+    """What JARVIS is doing, on what box, and what it last built.
+
+    Three questions that used to need three different places to look, and in
+    practice meant nobody looked at all.
+    """
+    a = activity()
+    now, host = time.time(), (a.get("host") or {})
+
+    if a.get("busy") and a.get("since"):
+        out = f"\u2699 working \u00b7 {_ago(now - a['since'])}"
+        if a.get("message"):
+            out += f"\n{a['message'][:90]}"
+        for step in (a.get("steps") or [])[-6:]:
+            out += f"\n  \u00b7 {step}"
+    elif a.get("done"):
+        out = f"\u2713 idle \u00b7 last turn finished {_ago(now - a['done'])} ago"
+    else:
+        out = "\u2713 idle \u00b7 nothing run since it started"
+
+    bits = []
+    if "uptime_s" in host:
+        bits.append(f"up {_ago(host['uptime_s'])}")
+    for key, label in (("disk_pct", "disk"), ("mem_pct", "mem"), ("swap_pct", "swap")):
+        if key in host:
+            bits.append(f"{label} {host[key]}%")
+    if bits:
+        out += "\n\n" + " \u00b7 ".join(bits)
+    # The warning that did not exist in September, when the disk was at 88%
+    # and nobody said anything until it hit 100.
+    if host.get("disk_pct", 0) >= 85:
+        out += (f"\n\u26a0 disk is {host['disk_pct']}% full"
+                f" \u2014 {host.get('disk_free_gb', '?')}GB left")
+
+    recent = a.get("recent") or []
+    if recent:
+        out += "\n\nRecently built:"
+        for entry in recent:
+            out += f"\n\u00b7 {entry.get('date', '')}  {entry.get('title', '')[:58]}"
+    return out[:3500]
+
+
 def cancel():
     """Drop whatever turn is running. True if something was actually stopped."""
     req = urllib.request.Request(
@@ -299,7 +360,7 @@ def handle(msg):
         tg("sendMessage", {"chat_id": chat, "text":
             "JARVIS is listening.\n\n"
             "/cancel — drop the turn that is running\n"
-            "/status — is the server actually there"})
+            "/status — what it is doing, disk and memory, what it last built"})
         return
     if text.startswith("/cancel"):
         try:
@@ -313,9 +374,9 @@ def handle(msg):
         return
     if text.startswith("/status"):
         try:
-            token()
-            tg("sendMessage", {"chat_id": chat, "text": "Bridge up, JARVIS reachable."})
+            tg("sendMessage", {"chat_id": chat, "text": status_text()})
         except Exception as e:                                # noqa: BLE001
+            # The bridge answered, so the bridge is alive; say which half is not.
             tg("sendMessage", {"chat_id": chat,
                                "text": f"Bridge up, but JARVIS is not answering: {str(e)[:150]}"})
         return
