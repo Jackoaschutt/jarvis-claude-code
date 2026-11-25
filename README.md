@@ -101,6 +101,12 @@ directory and deleting exactly those filenames, so it cannot touch a note the
 sample never created — yours, the `Build log`, anything written in Obsidian.
 `python3 seed_vault.py` puts the sample back.
 
+`seed_leadback.py` is the other half: the vault this deployment actually runs
+on. It is worth reading as an example of the shape rather than copying, since
+it describes one specific business. The rule it follows is the one that
+matters — where something is not known, there is a note saying so rather than
+a plausible number, because these notes become things Claude believes.
+
 ## Commands
 
 | command | does |
